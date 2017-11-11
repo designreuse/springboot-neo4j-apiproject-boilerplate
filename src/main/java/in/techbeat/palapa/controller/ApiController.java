@@ -1,17 +1,22 @@
 package in.techbeat.palapa.controller;
 
-import in.techbeat.palapa.exception.EntityAlreadyExistsException;
-import in.techbeat.palapa.exception.NotFoundException;
-import in.techbeat.palapa.model.db.Role;
+import in.techbeat.palapa.exception.InvalidInputException;
 import in.techbeat.palapa.model.db.User;
-import in.techbeat.palapa.model.request.RegisterRequest;
-import in.techbeat.palapa.repository.RoleRepository;
-import in.techbeat.palapa.repository.UserRepository;
+import in.techbeat.palapa.model.request.CreateUserRequest;
+import in.techbeat.palapa.model.request.LoginRequest;
+import in.techbeat.palapa.model.response.LoginResponse;
+import in.techbeat.palapa.model.response.UserResponse;
+import in.techbeat.palapa.service.UserService;
+import in.techbeat.palapa.validator.UserValidator;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.codec.digest.DigestUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,10 +30,10 @@ import static org.springframework.web.bind.annotation.RequestMethod.POST;
 public class ApiController {
 
     @Autowired
-    private UserRepository userRepository;
+    private UserService userService;
 
     @Autowired
-    private RoleRepository roleRepository;
+    private UserValidator userValidator;
 
     @RequestMapping(method = GET, value = "/ping")
     public ResponseEntity<String> handlePing() {
@@ -37,42 +42,27 @@ public class ApiController {
     }
 
     @RequestMapping(method = POST, value = "/register")
-    public User createUser(@RequestBody RegisterRequest input) {
+    public UserResponse createUser(@RequestBody final CreateUserRequest input, final BindingResult bindingResult) {
         log.debug("Got registration request for name {} and email {}", input.getUsername(), input.getEmail());
-        if (userRepository.findByUsername(input.getUsername()) != null) {
-            log.warn("A user with name {} already exists in the DB", input.getUsername());
-            throw new EntityAlreadyExistsException("Username already exists");
+        userValidator.validate(input, bindingResult);
+        if (bindingResult.hasErrors()) {
+            throw new InvalidInputException(StringUtils.join(bindingResult.getAllErrors().toArray(), ";"));
         }
-        if (userRepository.findByEmail(input.getEmail()) != null) {
-            log.warn("A user with email {} already exists in the DB", input.getEmail());
-            throw new EntityAlreadyExistsException("Email ID already exists");
-        }
-        final User user = User.builder()
-                .username(input.getUsername().trim())
-                .email(input.getEmail().trim())
-                .passwordHash(DigestUtils.sha1Hex(input.getPassword().trim()))
-                .build();
-
-        // TODO This is probably not at the right place
-        Role userRole = roleRepository.findByName("USER");
-        if (userRole == null) {
-            userRole = Role.builder().name("USER").build();
-            roleRepository.save(userRole);
-        }
-        user.hasRole(userRole);
-        userRepository.save(user);
+        final User user = userService.createUser(input);
         log.debug(user.toString());
-        return user;
+        return user.toUserResponse();
     }
+
     @RequestMapping(method = GET, value = "/user/name/{username}")
-    public User findByUsername(@PathVariable("username") String username) {
-        log.debug("Got request for getUserByName for {}", username);
-        final User user = userRepository.findByUsername(username.trim());
-        if (user == null) {
-            log.warn("No user with name {} exists in the DB", username);
-            throw new NotFoundException("Requested user was not found");
-        }
-        return user;
+    public UserResponse findByUsername(@PathVariable("username") final String username) {
+        return userService.findByUsername(username).toUserResponse();
+    }
+
+    @RequestMapping(method = POST, value = "/login")
+    public LoginResponse login(@RequestBody LoginRequest input) {
+        log.debug("Got request for login {}", input.getUsername());
+        final LoginResponse loginResponse = LoginResponse.builder().token(userService.login(input)).build();
+        return loginResponse;
     }
 
 }

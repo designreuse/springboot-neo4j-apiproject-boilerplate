@@ -1,9 +1,12 @@
 package in.techbeat.palapa.model.db;
 
+import in.techbeat.palapa.model.request.CreateUserRequest;
+import in.techbeat.palapa.model.response.UserResponse;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.neo4j.ogm.annotation.GraphId;
 import org.neo4j.ogm.annotation.NodeEntity;
 import org.neo4j.ogm.annotation.Relationship;
@@ -38,5 +41,17 @@ public class User {
             roles = new HashSet<>();
         }
         roles.add(role);
+    }
+
+    public UserResponse toUserResponse() {
+        return UserResponse.builder().email(email).username(username).roles(roles).build();
+    }
+
+    public static User fromUserRequest(final CreateUserRequest createUserRequest) {
+        return User.builder()
+                .email(createUserRequest.getEmail())
+                .username(createUserRequest.getUsername())
+                .passwordHash(DigestUtils.sha1Hex(createUserRequest.getPassword().trim()))
+                .build();
     }
 }

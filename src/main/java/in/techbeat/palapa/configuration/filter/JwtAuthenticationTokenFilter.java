@@ -53,6 +53,7 @@ public class JwtAuthenticationTokenFilter extends OncePerRequestFilter {
                 throw new ForbiddenException("Invalid authentication token");
             }
         } else {
+            // Don't throw up here because we also have some APIs that should be accessible unauthenticated
             logger.warn("Couldn't extract the JWT from Authorization header");
         }
         filterChain.doFilter(request, response);
